@@ -18,6 +18,11 @@
 ```bash
 git clone git@github.com:XIAO-JUN-ZE/FoxtronPi-Example-code.git
 ```
+2. 進入資料夾後安裝需求套件:
+```bash
+cd FoxtronPi-Example-code
+pip install -r requirements.txt
+```
 
 ## 執行方式
 1. **Read DID**
