@@ -17,5 +17,15 @@
 1. 複製（Clone）本專案：
 ```bash
 git clone git@github.com:XIAO-JUN-ZE/FoxtronPi-Example-code.git
+```
+
+## 執行方式
+1. **Read DID**
+```bash
+python3 FoxPi_read.py
+```
+2. **Write DID**
+```bash
+python3 Foxpi_read.py
 
 
