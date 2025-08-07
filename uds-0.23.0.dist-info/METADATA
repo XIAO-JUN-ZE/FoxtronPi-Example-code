@@ -1,0 +1,271 @@
+Metadata-Version: 2.4
+Name: uds
+Version: 0.23.0
+Summary: Foxtron EV UDS library
+Author-email: Sirius Wu <Sirius.CC.Wu@foxtronev.com>
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: udsoncan>=1.25.0
+Requires-Dist: doipclient>=1.1.4
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.2; extra == "dev"
+Requires-Dist: psutil>=5.9.6; extra == "dev"
+Requires-Dist: toml>=0.10.2; extra == "dev"
+Requires-Dist: build>=0.7.0; extra == "dev"
+
+# uds-py: Python UDS Client over DoIP
+
+<!-- Optional: Add badges for build status, license etc. -->
+
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](...) <!-- Replace with actual badge URL -->
+
+## Overview
+
+`uds-py` provides a Python interface for Unified Diagnostic Services (UDS) communication over Diagnostics over IP (DoIP). It acts as a wrapper around a native Rust library (`libuds_client.so` on Linux, `uds_client.dll` on Windows), enabling interaction with vehicle Electronic Control Units (ECUs).
+
+This project facilitates sending UDS requests and receiving responses via a DoIP gateway, integrating with the excellent `udsoncan` library for UDS protocol logic.
+
+**Key Features:**
+
+- DoIP connection establishment and management.
+- Pythonic interface using `ctypes` FFI bindings automatically generated from Rust.
+- Integration with `udsoncan` for standard UDS services.
+- Support for specific security access algorithms based on car model via tailored `udsoncan` configurations.
+- Cross-platform build support (primarily Linux x86_64/aarch64, experimental Windows).
+
+## Prerequisites
+
+### Runtime
+
+- **Python:** 3.10 or later.
+- **Python Tooling:** `pip` for package installation. Using `venv` for virtual environments is highly recommended.
+- **Python Packages:** See `pyproject.toml`. Key dependencies include `udsoncan`.
+- **Native Runtime Dependencies:**
+  - **Linux:** The compiled library (`libuds_client.so`) only depends on standard system libraries (libc, libgcc, etc.), which are typically present on all Linux distributions.
+  - **Windows:** May require the Microsoft Visual C++ Redistributable package compatible with the Rust compiler used for building `uds_client.dll`.
+
+### Building from Source
+
+- **Python Development Packages:** Development dependencies (like `pytest`, `build`) are defined under the `[project.optional-dependencies]` table (e.g., `dev`) in `pyproject.toml`.
+- **Rust Toolchain:** Latest stable `rustc` and `cargo` are recommended. Install Rust
+- **Make:** Required to use the `Makefile` build targets.
+- **C Linker (for cross-compilation):** If building Linux wheels on a different architecture (e.g., building `aarch64` on `x86_64`), you need the appropriate cross-linker installed (e.g., `gcc-aarch64-linux-gnu`).
+- **Python Build Tools:** `build` package (`pip install build`).
+
+## Building the Native Library and FFI Bindings
+
+The core DoIP communication and logic reside in a Rust library (`uds-client`). Python interacts with this library via FFI bindings (`uds/ffi.py`) generated using the `interoptopus` crate.
+
+The `Makefile` orchestrates the build process. The primary target `uds/ffi.py` ensures both steps are completed:
+
+1. **Diagnostic specification:** `make -C .. download-file` downloads thed diagnostic specification.
+2. **Compile Rust Library:** `cargo build --release` compiles the Rust code (`uds-client` and `uds-gen` crates) into a shared library (`../target/release/libuds_client.so` or `../target/release/uds_client.dll`).
+3. **Generate FFI Bindings:** `cargo test --test generate_bindings` runs a special test binary that uses `interoptopus` to read Rust FFI definitions (`uds-client/src/ffi.rs`) and generate the corresponding Python `ctypes` code in `uds/ffi.py`.
+4. **Copy Library:** The compiled library (`uds/libuds_client.so` or `uds/uds_client.dll`) is copied into the `uds/` directory alongside the Python code. This allows the Python code to find it easily during local development and testing.
+
+**To build locally:**
+
+```bash
+make uds/ffi.py
+```
+
+This command ensures both the native library and the Python bindings file are up-to-date.
+
+## Installation
+
+Follow these steps to set up a development environment:
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/foxtron-ev/fdc-uds.git
+cd fdc-uds/uds-py
+```
+
+2. Create and activate a virtual environment (Recommended)
+
+```
+python3 -m venv venv
+source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+```
+
+3. Install build/development dependencies:
+
+This command installs both runtime and development dependencies defined in pyproject.toml.
+The option `-e` is used to install the uds-py in editable mode: This allows you to run the code and tests directly from the source tree, and changes you make are immediately reflected.
+
+```bash
+pip install -e .[dev]
+```
+
+4. Build the native library and FFI bindings:
+
+```bash
+make uds/ffi.py
+```
+
+## Configuration
+
+The DoIP client requires connection details, typically provided via environment variables:
+
+- DOIP_SERVER_IP: The IP address of the DoIP gateway/server (default: 169.254.200.1).
+- DOIP_LOGICAL_ADDRESS: The logical address (hexadecimal) of the target ECU (default: 0x0680).
+
+Set these before running your Python scripts:
+
+```bash
+export DOIP_SERVER_IP=<IP_ADDRESS>
+export DOIP_LOGICAL_ADDRESS=<HEX_ADDRESS> # Or 0x0E80, check how config.py parses it
+```
+
+(On Windows, use set DOIP_SERVER_IP=...)
+
+## Usage Example
+
+This example demonstrates connecting to an ECU, changing the diagnostic session, and reading a Data Identifier (DID).
+
+```python
+import os
+import logging
+from udsoncan.client import Client
+from udsoncan.connections import BaseConnection # Use BaseConnection for type hint
+from udsoncan.configs import ClientConfig
+
+from uds.client import DoIPClient, client_config
+from uds.connection import DoIPConnection
+from uds.config import DOIP_SERVER_IP, DOIP_LOGICAL_ADDRESS # Reads from env vars
+
+# --- Basic Setup ---
+logging.basicConfig(level=logging.INFO) # Use INFO or DEBUG
+log = logging.getLogger("uds-example")
+
+# --- Configuration ---
+TARGET_IP: str = DOIP_SERVER_IP
+ECU_ADDRESS: int = DOIP_LOGICAL_ADDRESS # config.py likely parses hex string to int
+
+# Select the car model to load specific UDS configurations (e.g., security algorithms)
+# Check uds.client.client_config for available models and behavior if None
+SELECTED_MODEL: str = "MODEL_D21L"
+
+log.info(f"Connecting to {TARGET_IP} (ECU: {ECU_ADDRESS:#04x})")
+
+# --- DoIP Setup ---
+# DoIPClient manages the native library interaction
+doip_client = DoIPClient(ip_address=TARGET_IP, ecu_logical_address=ECU_ADDRESS)
+# DoIPConnection provides the transport layer interface for udsoncan
+doip_conn: BaseConnection = DoIPConnection(doip_client)
+
+# --- UDS Client Setup ---
+# Get the udsoncan configuration tailored for the selected model
+uds_config: ClientConfig = client_config(model=SELECTED_MODEL)
+log.debug(f"Using UDS config for model: {SELECTED_MODEL}")
+
+# Create the udsoncan Client instance using a context manager
+try:
+    with Client(doip_conn, config=uds_config) as client:
+        log.info("UDS Client connection established.")
+
+        # --- UDS Operations ---
+        client.change_session(3) # Request Extended Diagnostic Session
+        log.info("Changed to Extended Diagnostic Session (0x03)")
+
+        # Send Tester Present periodically if needed (udsoncan can handle this automatically)
+        client.tester_present()
+        log.info("Tester Present sent.")
+
+        # Example: Read Vehicle Identification Number (VIN - DID 0xF190)
+        response = client.read_data_by_identifier([0xF190])
+        vin = response.data[b'\xf1\x90'].decode('ascii') # Decode bytes to string
+        log.info(f"Read VIN (0xF190): {vin}")
+
+        # Example: Security Access (if applicable and configured in uds_config)
+        # try:
+        #     client.unlock(5) # Request seed and send key for level 5
+        #     log.info("Security Level 5 unlocked successfully.")
+        # except Exception as sec_e:
+        #     log.error(f"Security Access failed: {sec_e}")
+
+        log.info("UDS communication example finished successfully.")
+
+except ConnectionError as e:
+    log.error(f"Connection failed: {e}")
+except Exception as e:
+    log.error(f"An unexpected error occurred: {e}", exc_info=True) # Log traceback
+
+finally:
+    # Cleanup if needed, though context manager handles Client.close()
+    log.info("Exiting.")
+
+```
+
+## Running Tests
+
+The project includes test suites using pytest. The Makefile provides convenient targets that handle building and installing the package before running tests.
+
+- CI Tests: Runs a general suite of tests.
+
+```bash
+make test
+```
+
+- FDC Tests: Runs a specific suite requiring interaction with FDC ECU. Every test will ask the car model
+  to test.
+
+```bash
+make fdc-test
+```
+
+- FDC Board Test Example:
+
+This example demonstrates running the FDC tests with a specific IP address and car model:
+
+```bash
+DOIP_SERVER_IP=192.168.200.1 CAR_MODEL=D31H make fdc-test
+```
+
+## Building Wheels for Distribution
+
+Platform-specific Python wheels (.whl files) bundle the compiled native library for easier distribution.
+
+- **Linux Wheels (x86_64 & aarch64):** Requires appropriate cross-compilation linkers (e.g., gcc-x86_64-linux-gnu, gcc-aarch64-linux-gnu).
+
+```bash
+make linux-wheels
+```
+
+This target compiles the Rust library for each architecture, copies it to uds/, runs python3 -m build, and renames the resulting wheel with the correct platform tag (e.g., linux_x86_64, linux_aarch64). Wheels are placed in the dist/ directory.
+
+Install the linux wheels:
+
+```
+python3 -m venv venv
+source venv/bin/activate
+# On X86_64
+pip install uds-0.23.0-py3-none-linux_x86_64.whl
+# On aarch64
+# pip install uds-0.23.0-py3-none-linux_aarch64.whl
+pip list
+```
+
+- **Windows Wheels (Experimental):**
+
+```bash
+make win-wheels
+```
+
+This target attempts to build a Windows wheel. Note: This is currently experimental and requires fixes:
+
+1. The Python code (uds/ffi.py or uds/**init**.py) needs modification to load .dll files on Windows.
+2. The packaging setup (pyproject.toml or MANIFEST.in) needs to ensure uds_client.dll is included in the wheel.
+
+## Troubleshooting
+
+- **ImportError while loading conftest ... OSError: ... cannot open shared object file: No such file or directory:**
+
+  - **Did you build?** Ensure you have run make uds/ffi.py successfully.
+  - **File Exists?** Verify uds/libuds_client.so (or uds/uds_client.dll) exists.
+  - **Permissions?** Check read/execute permissions (ls -l uds/libuds_client.so).
+  - **Architecture Mismatch?** Run file uds/libuds_client.so and uname -m. They must match (e.g., both x86_64 or both aarch64). If not, rebuild for the correct target architecture.
+  - **Missing Runtime Dependencies?** (Unlikely on Linux). Run ldd uds/libuds_client.so to check. On Windows, ensure the VC++ Redistributable is installed if needed.
+
+- **Test Failures:** Check logs (increase RUST_LOG level if needed) for errors from the Python or Rust code. Ensure any required hardware/simulators are connected and configured correctly.
