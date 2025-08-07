@@ -9,7 +9,9 @@
 | `FoxPi_read.py`  | 讀取車輛訊號狀態（如車速、車燈、電池、馬達等） |
 | `FoxPi_write.py` | 控制車輛訊號（如加減速度、目標車速、開啟燈光、變換檔位等）    |
 | `README.md`     | 本說明文件                  |
-| `requirements.txt` | 需求套件  |
+| `requirements.txt` | Ubuntu 完整需求套件  |
+| 'Linux_require.txt` | Ubuntu 需求套件 |
+| 'Windows_require.txt` | Windows 需求套件 |
 
 ---
 
@@ -23,6 +25,7 @@ git clone git@github.com:XIAO-JUN-ZE/FoxtronPi-Example-code.git
 ```bash
 cd FoxtronPi-Example-code
 ```
+###完整需求套件
 ```bash
 pip install -r requirements.txt
 ```
