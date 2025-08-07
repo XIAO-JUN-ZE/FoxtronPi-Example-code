@@ -11,3 +11,9 @@
 | `README.md`     | 本說明文件                  |
 
 ---
+
+## 🚀 安裝方式
+
+1. 複製（Clone）本專案：
+```bash
+git clone git@github.com:XIAO-JUN-ZE/FoxtronPi-Example-code.git
