@@ -14,17 +14,19 @@
 
 ## 🚀 安裝方式
 
-1. 複製（Clone）本專案：
+1. 複製(clone)本專案：
 ```bash
 git clone git@github.com:XIAO-JUN-ZE/FoxtronPi-Example-code.git
 ```
 2. 進入資料夾後安裝需求套件:
 ```bash
 cd FoxtronPi-Example-code
+```
+```bash
 pip install -r requirements.txt
 ```
 
-## 執行方式
+## 🧪 執行方式
 1. **Read DID**
 ```bash
 python3 FoxPi_read.py
@@ -32,5 +34,5 @@ python3 FoxPi_read.py
 2. **Write DID**
 ```bash
 python3 Foxpi_read.py
-
+```
 
